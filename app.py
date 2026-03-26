@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from simulator import StockSimulator
 
-# ====================== 页面基础设置 ======================
+# ====================== 页面设置 ======================
 st.set_page_config(
     page_title="专业A股模拟交易系统",
     layout="wide",
@@ -12,7 +12,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ====================== 极简CSS（彻底解决渲染问题）======================
+# ====================== 初始化会话状态（核心！解决数据不持久）======================
+if "sim" not in st.session_state:
+    st.session_state.sim = StockSimulator(initial_cash=100000)
+sim = st.session_state.sim
+
+# ====================== 极简CSS ======================
 st.markdown("""
 <style>
     .stMetric {
@@ -25,47 +30,22 @@ st.markdown("""
         border-radius: 8px;
         height: 48px;
         font-weight: 600;
+        font-size: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
-
-# ====================== 多账户管理 ======================
-if "current_user" not in st.session_state:
-    st.session_state.current_user = "user1"
-
-users = StockSimulator.get_all_users()
-if not users:
-    users = ["user1"]
 
 # ====================== 顶部标题 ======================
 st.title("📊 专业A股模拟交易系统")
 st.divider()
 
-# ====================== 账户切换 ======================
-col1, col2, _ = st.columns([2, 2, 6])
-with col1:
-    selected_user = st.selectbox("当前账户", users, index=users.index(st.session_state.current_user))
-    if selected_user != st.session_state.current_user:
-        st.session_state.current_user = selected_user
-        st.rerun()
-with col2:
-    new_user = st.text_input("新建账户", placeholder="输入账户名称")
-    if st.button("➕ 创建账户"):
-        if new_user and new_user not in users:
-            sim = StockSimulator(user_id=new_user)
-            sim.save_account()
-            st.success(f"✅ 账户 {new_user} 创建成功！")
-            st.rerun()
-
-# 初始化交易引擎
-sim = StockSimulator(user_id=st.session_state.current_user)
-
-# 触发条件单
+# ====================== 触发条件单 ======================
 triggered = sim.check_condition_orders()
 for msg in triggered:
     st.success(msg)
+    st.rerun()
 
-# ====================== 资金面板（原生组件，彻底告别乱码）=====================
+# ====================== 资金面板 ======================
 assets = sim.get_assets()
 col_cash, col_total, col_profit, col_init = st.columns(4)
 
@@ -122,7 +102,7 @@ with tab1:
             with st.spinner("🔄 执行买入中..."):
                 result = sim.buy(code, amount)
                 st.info(result)
-                st.rerun()
+                st.rerun()  # 强制刷新，更新数据
 
     with col_sell:
         st.subheader("📕 卖出股票")
@@ -140,7 +120,7 @@ with tab1:
                 with st.spinner("🔄 执行卖出中..."):
                     result = sim.sell(sell_code, sell_amt)
                     st.info(result)
-                    st.rerun()
+                    st.rerun()  # 强制刷新，更新数据
         else:
             st.info("📭 当前无持仓，无法卖出")
 
@@ -256,4 +236,4 @@ with tab5:
 
 # ====================== 页脚 ======================
 st.divider()
-st.caption("📈 专业A股模拟交易系统 | 真实手续费 | T+1交易规则 | 止盈止损 | 多账户管理 | 手机/电脑随时随地使用")
+st.caption("📈 专业A股模拟交易系统 | 真实手续费 | T+1交易规则 | 止盈止损 | 手机/电脑随时随地使用")
