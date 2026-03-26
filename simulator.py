@@ -1,43 +1,17 @@
-import json
 import akshare as ak
 import pandas as pd
 from datetime import datetime, timedelta
 
 class StockSimulator:
-    def __init__(self, user_id="user1", initial_cash=100000):
-        self.user_id = user_id
-        self.initial_cash = initial_cash
-        self.load_account()
-
-    def load_account(self):
-        try:
-            with open(f"{self.user_id}_account.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.cash = data["cash"]
-                self.holdings = data["holdings"]
-                self.trade_history = data["history"]
-                self.condition_orders = data.get("condition_orders", [])
-                self.t1_lock = data.get("t1_lock", {})
-        except:
-            self.cash = self.initial_cash
-            self.holdings = {}
-            self.trade_history = []
-            self.condition_orders = []
-            self.t1_lock = {}
-
-    def save_account(self):
-        data = {
-            "cash": self.cash,
-            "holdings": self.holdings,
-            "history": self.trade_history,
-            "condition_orders": self.condition_orders,
-            "t1_lock": self.t1_lock
-        }
-        with open(f"{self.user_id}_account.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+    def __init__(self, initial_cash=100000):
+        # 用内存存储，不依赖本地文件，适配云端
+        self.cash = initial_cash
+        self.holdings = {}  # {code: {"name": name, "amount": amount, "cost": cost}}
+        self.trade_history = []
+        self.condition_orders = []
+        self.t1_lock = {}  # {code: {date: volume}}
 
     def get_price(self, code):
-        """云端兼容版：获取股票价格，处理网络限制"""
         try:
             df = ak.stock_zh_a_spot_em(symbol=code)
             if df.empty:
@@ -52,7 +26,6 @@ class StockSimulator:
             return None, None, None, None
 
     def get_kline_data(self, code, period="daily"):
-        """获取K线数据，云端兼容"""
         try:
             if period == "daily":
                 df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date="20240101", end_date=datetime.now().strftime("%Y%m%d"))
@@ -67,7 +40,6 @@ class StockSimulator:
             return pd.DataFrame()
 
     def calculate_fee(self, price, amount, trade_type="buy"):
-        """真实手续费：佣金万3（最低5元）+ 过户费万0.2 + 印花税千1（仅卖出）"""
         commission = price * amount * 0.0003
         commission = max(5, commission)
         transfer_fee = price * amount * 0.00002
@@ -81,7 +53,6 @@ class StockSimulator:
         }
 
     def check_t1_lock(self, code, amount):
-        """T+1交易规则检查"""
         if code not in self.t1_lock:
             return True
         available = 0
@@ -93,7 +64,6 @@ class StockSimulator:
         return available >= amount
 
     def buy(self, code, amount):
-        """修复版买入函数，云端100%可用"""
         if amount % 100 != 0:
             return "❌ 买入必须是100股的整数倍"
 
@@ -147,11 +117,9 @@ class StockSimulator:
             "fee": fee
         })
 
-        self.save_account()
         return f"✅ 买入成功！{name} {amount}股，成交价¥{price:.2f}，手续费¥{fee['total']:.2f}"
 
     def sell(self, code, amount):
-        """修复版卖出函数"""
         if code not in self.holdings:
             return "❌ 无该股票持仓，无法卖出"
 
@@ -190,11 +158,9 @@ class StockSimulator:
             "fee": fee
         })
 
-        self.save_account()
         return f"✅ 卖出成功！{name} {amount}股，成交价¥{price:.2f}，手续费¥{fee['total']:.2f}"
 
     def add_condition_order(self, code, order_type, trigger_price, amount):
-        """添加止盈止损条件单"""
         price, name, _, _ = self.get_price(code)
         if not price:
             return "❌ 获取股票价格失败"
@@ -214,11 +180,10 @@ class StockSimulator:
             "status": "待触发",
             "create_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
-        self.save_account()
+
         return f"✅ {order_type}条件单添加成功！{name} {amount}股，触发价¥{trigger_price:.2f}"
 
     def check_condition_orders(self):
-        """检查并触发条件单"""
         triggered = []
         for order in self.condition_orders:
             if order["status"] != "待触发":
@@ -236,11 +201,9 @@ class StockSimulator:
                 order["status"] = "已触发"
                 order["trigger_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 triggered.append(f"✅ {order['name']}止损触发：{res}")
-        self.save_account()
         return triggered
 
     def get_assets(self):
-        """计算总资产、持仓盈亏"""
         total = self.cash
         profit = 0
         for code, item in self.holdings.items():
@@ -254,18 +217,3 @@ class StockSimulator:
             "total_assets": round(total, 2),
             "profit": round(profit, 2)
         }
-
-    def backtest_strategy(self, code, start_date, end_date, initial_cash=100000, strategy="ma_cross"):
-        """策略回测（云端简化版）"""
-        return None, "ℹ️ 云端环境限制，回测功能请使用本地版本"
-
-    @staticmethod
-    def get_all_users():
-        """获取所有账户"""
-        import os
-        users = []
-        for file in os.listdir("."):
-            if file.endswith("_account.json"):
-                user_id = file.replace("_account.json", "")
-                users.append(user_id)
-        return users
