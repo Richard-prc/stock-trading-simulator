@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from simulator import StockSimulator
 
-# ====================== 页面设置（专业版）======================
+# ====================== 页面设置（白色专业版）======================
 st.set_page_config(
     page_title="专业A股模拟交易系统",
     layout="wide",
@@ -12,20 +12,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ====================== 专业风格CSS（修复按钮点击）=======================
+# ====================== 白色清爽专业CSS =======================
 st.markdown("""
 <style>
-    /* 全局暗黑主题 */
+    /* 全局白色主题 */
     .stApp {
-        background-color: #0E1117;
-        color: #E0E0E0;
+        background-color: #F5F7FA;
+        color: #1A1D24;
     }
-    /* 卡片样式 */
+    /* 卡片样式（白色背景+阴影） */
     .stCard {
-        background-color: #1A1D24;
+        background-color: #FFFFFF;
         border-radius: 12px;
         padding: 20px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         margin-bottom: 20px;
     }
     /* 大数字样式 */
@@ -38,7 +38,7 @@ st.markdown("""
     .card-title {
         font-size: 16px;
         font-weight: 600;
-        color: #B0B0B0;
+        color: #666666;
         margin-bottom: 8px;
     }
     /* 按钮样式（修复点击） */
@@ -65,21 +65,35 @@ st.markdown("""
         background-color: #F74747 !important;
         color: white !important;
     }
-    /* 标签页样式 */
+    /* 标签页样式（白色背景） */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
-        background-color: #1A1D24;
+        background-color: #FFFFFF;
         padding: 8px;
         border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     .stTabs [data-baseweb="tab"] {
         border-radius: 6px;
         padding: 8px 16px;
         font-weight: 600;
+        color: #333333;
     }
     .stTabs [aria-selected="true"] {
         background-color: #21C995;
         color: white;
+    }
+    /* 输入框样式（白色背景） */
+    .stTextInput > div > div > input,
+    .stNumberInput > div > div > input {
+        background-color: #FFFFFF;
+        color: #1A1D24;
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+    }
+    /* 表格样式（白色背景） */
+    .stDataFrame {
+        background-color: #FFFFFF;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -120,7 +134,7 @@ triggered_orders = sim.check_condition_orders()
 for msg in triggered_orders:
     st.success(msg)
 
-# ====================== 资金面板（专业卡片）=======================
+# ====================== 资金面板（白色专业卡片）=======================
 assets = sim.get_assets()
 col1, col2, col3, col4 = st.columns(4)
 
@@ -133,7 +147,7 @@ with col1:
 with col2:
     st.markdown('<div class="stCard">', unsafe_allow_html=True)
     st.markdown('<p class="card-title">总资产</p>')
-    st.markdown(f'<p class="big-number" style="color:#FFFFFF">¥{assets["total_assets"]:,}</p>')
+    st.markdown(f'<p class="big-number" style="color:#1A1D24">¥{assets["total_assets"]:,}</p>')
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col3:
@@ -146,7 +160,7 @@ with col3:
 with col4:
     st.markdown('<div class="stCard">', unsafe_allow_html=True)
     st.markdown('<p class="card-title">初始资金</p>')
-    st.markdown('<p class="big-number" style="color:#B0B0B0">¥100,000.00</p>')
+    st.markdown('<p class="big-number" style="color:#666666">¥100,000.00</p>')
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -160,7 +174,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📋 持仓历史"
 ])
 
-# -------------------- 1. 交易面板（修复按钮） --------------------
+# -------------------- 1. 交易面板（修复买入按钮） --------------------
 with tab1:
     col_buy, col_sell = st.columns(2)
     
@@ -170,14 +184,12 @@ with tab1:
         code = st.text_input("股票代码（6位数字）", key="buy_code", placeholder="如600000")
         amount = st.number_input("买入股数（100的整数倍）", min_value=100, step=100, value=100)
         
-        # 买入按钮（单独容器，修复样式）
-        col_btn, _ = st.columns([1, 3])
-        with col_btn:
-            if st.button("✅ 确认买入", type="primary", key="buy_btn"):
-                with st.spinner("执行买入中..."):
-                    msg = sim.buy(code, amount)
-                    st.info(msg)
-                    st.rerun()
+        # 买入按钮（独立容器，确保点击生效）
+        if st.button("✅ 确认买入", type="primary", key="buy_btn", use_container_width=True):
+            with st.spinner("🔄 执行买入中..."):
+                msg = sim.buy(code, amount)
+                st.info(msg)
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_sell:
@@ -193,13 +205,11 @@ with tab1:
             max_amt = sim.holdings[sell_code]["amount"]
             sell_amt = st.number_input("卖出股数", min_value=100, step=100, max_value=max_amt, value=100)
             
-            col_btn, _ = st.columns([1, 3])
-            with col_btn:
-                if st.button("❌ 确认卖出", type="primary", key="sell_btn"):
-                    with st.spinner("执行卖出中..."):
-                        msg = sim.sell(sell_code, sell_amt)
-                        st.info(msg)
-                        st.rerun()
+            if st.button("❌ 确认卖出", type="primary", key="sell_btn", use_container_width=True):
+                with st.spinner("🔄 执行卖出中..."):
+                    msg = sim.sell(sell_code, sell_amt)
+                    st.info(msg)
+                    st.rerun()
         else:
             st.info("📭 当前无持仓，无法卖出")
         st.markdown('</div>', unsafe_allow_html=True)
@@ -212,11 +222,11 @@ with tab2:
     period = st.selectbox("K线周期", ["日线", "周线", "月线"], index=0)
     period_map = {"日线": "daily", "周线": "weekly", "月线": "monthly"}
 
-    if st.button("📊 加载K线", key="kline_btn"):
-        with st.spinner("获取行情数据中..."):
+    if st.button("📊 加载K线", key="kline_btn", use_container_width=True):
+        with st.spinner("🔄 获取行情数据中..."):
             df = sim.get_kline_data(code, period_map[period])
             if df is not None and not df.empty:
-                # 专业K线图（暗黑主题）
+                # 白色主题K线图（红绿分明）
                 fig = go.Figure(data=[go.Candlestick(
                     x=df["日期"],
                     open=df["开盘"],
@@ -240,14 +250,14 @@ with tab2:
                     name="MA10", 
                     line=dict(color="#1E90FF", width=2)
                 ))
-                # 图表样式优化
+                # 图表样式优化（白色主题）
                 fig.update_layout(
                     title=f"{code} {period}K线图",
                     xaxis_title="日期",
                     yaxis_title="价格",
-                    template="plotly_dark",
-                    paper_bgcolor="#1A1D24",
-                    plot_bgcolor="#1A1D24",
+                    template="plotly_white",
+                    paper_bgcolor="#FFFFFF",
+                    plot_bgcolor="#F5F7FA",
                     height=550,
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
@@ -274,8 +284,8 @@ with tab3:
         trigger_price = st.number_input("触发价格", min_value=0.01, step=0.01, key="cond_price")
         amount = st.number_input("委托股数", min_value=100, step=100, key="cond_amt")
         
-        if st.button("✅ 添加条件单", type="primary", key="cond_btn"):
-            with st.spinner("添加中..."):
+        if st.button("✅ 添加条件单", type="primary", key="cond_btn", use_container_width=True):
+            with st.spinner("🔄 添加中..."):
                 msg = sim.add_condition_order(code, order_type, trigger_price, amount)
                 st.info(msg)
                 st.rerun()
