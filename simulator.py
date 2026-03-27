@@ -190,6 +190,29 @@ class StockSimulator:
         self.pending_orders = []
         return res
 
+    # 补全：add_condition_order 函数（之前漏写，导致报错）
+    def add_condition_order(self, code, order_type, trigger_price, amount):
+        price, name, _, _ = self.get_price(code)
+        if price is None:
+            return "❌ 行情获取失败，无法添加条件单"
+        if order_type == "止盈" and trigger_price <= price:
+            return "❌ 止盈价必须高于当前价格"
+        if order_type == "止损" and trigger_price >= price:
+            return "❌ 止损价必须低于当前价格"
+        if amount % 100 != 0:
+            return "❌ 委托数量必须是100股的整数倍"
+
+        self.condition_orders.append({
+            "code": code,
+            "name": name,
+            "type": order_type,
+            "trigger_price": trigger_price,
+            "amount": amount,
+            "status": "待触发",
+            "create_time": now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+        return f"✅ {order_type}条件单添加成功！{name} {amount}股，触发价￥{trigger_price:.2f}"
+
     def check_condition_orders(self):
         triggered = []
         for o in self.condition_orders:
