@@ -29,19 +29,20 @@ with st.sidebar:
     current = st.selectbox(
         "当前账户",
         accounts,
-        index=accounts.index(st.session_state.current_account)
+        index=accounts.index(st.session_state.current_account),
+        key="sidebar_account_select"
     )
     st.session_state.current_account = current
 
-    new_acc = st.text_input("新账户名称")
-    if st.button("➕ 新增账户"):
+    new_acc = st.text_input("新账户名称", key="sidebar_new_account")
+    if st.button("➕ 新增账户", key="sidebar_add_account"):
         if new_acc and new_acc not in st.session_state.accounts:
             st.session_state.accounts[new_acc] = StockSimulator(100000)
             st.session_state.current_account = new_acc
             st.rerun()
 
     if len(accounts) > 1:
-        if st.button("🗑️ 删除当前账户"):
+        if st.button("🗑️ 删除当前账户", key="sidebar_delete_account"):
             del st.session_state.accounts[current]
             st.session_state.current_account = list(st.session_state.accounts.keys())[0]
             st.rerun()
@@ -91,75 +92,85 @@ st.divider()
 
 tab1, tab2, tab3, tab4 = st.tabs(["📗 交易", "📈 K线", "⏯ 止盈止损", "📋 持仓"])
 
-# 交易
+# ====================== 1. 交易 tab（唯一key）======================
 with tab1:
     bc, sc = st.columns(2)
     with bc:
-        st.subheader("买入")
-        code = st.text_input("股票代码", key="bcode")
-        amt = st.number_input("股数", 100, step=100)
-        if st.button("✅ 买入", type="primary", use_container_width=True):
+        st.subheader("📗 买入股票")
+        code = st.text_input("股票代码（6位）", key="tab1_buy_code")
+        amt = st.number_input("买入股数（100的整数倍）", min_value=100, step=100, key="tab1_buy_amt")
+        if st.button("✅ 确认买入", type="primary", use_container_width=True, key="tab1_buy_btn"):
             r = sim.buy(code, amt)
             st.info(r)
             st.rerun()
     with sc:
-        st.subheader("卖出")
+        st.subheader("📕 卖出股票")
         if sim.holdings:
-            scode = st.selectbox("持仓", list(sim.holdings.keys()),
-                                 format_func=lambda x: f"{x} {sim.holdings[x]['name']}")
+            scode = st.selectbox(
+                "选择持仓",
+                list(sim.holdings.keys()),
+                format_func=lambda x: f"{x} {sim.holdings[x]['name']}",
+                key="tab1_sell_code"
+            )
             maxa = sim.holdings[scode]["amount"]
-            samt = st.number_input("卖出股数", 100, step=100, max_value=maxa)
-            if st.button("❌ 卖出", type="primary", use_container_width=True):
+            samt = st.number_input(
+                "卖出股数",
+                min_value=100,
+                step=100,
+                max_value=maxa,
+                key="tab1_sell_amt"
+            )
+            if st.button("❌ 确认卖出", type="primary", use_container_width=True, key="tab1_sell_btn"):
                 r = sim.sell(scode, samt)
                 st.info(r)
                 st.rerun()
         else:
-            st.info("空仓")
+            st.info("📭 当前无持仓，无法卖出")
 
     if sim.pending_orders:
         st.divider()
-        st.subheader("⏸ 预委托（开盘自动成交）")
-        st.dataframe(pd.DataFrame(sim.pending_orders), hide_index=True)
+        st.subheader("⏸️ 休市预委托（开盘自动成交）")
+        st.dataframe(pd.DataFrame(sim.pending_orders), hide_index=True, key="tab1_pending_df")
 
-# K线
+# ====================== 2. K线 tab（唯一key）======================
 with tab2:
-    st.subheader("K线图表")
-    code = st.text_input("代码", key="kcode")
-    period = st.selectbox("周期", ["日线", "周线", "月线"])
+    st.subheader("📈 个股K线图")
+    code = st.text_input("股票代码", key="tab2_kline_code")
+    period = st.selectbox("K线周期", ["日线", "周线", "月线"], key="tab2_kline_period")
     pm = {"日线": "daily", "周线": "weekly", "月线": "monthly"}
-    if st.button("📊 加载K线"):
+    if st.button("📊 加载K线", key="tab2_kline_btn"):
         df = sim.get_kline_data(code, pm[period])
         if not df.empty:
             fig = go.Figure(data=[go.Candlestick(
                 x=df["日期"], open=df["开盘"], high=df["最高"], low=df["最低"], close=df["收盘"]
             )])
             fig.update_layout(template="plotly_white", height=500)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="tab2_kline_chart")
 
-# 止盈止损
+# ====================== 3. 止盈止损 tab（唯一key）======================
 with tab3:
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("新增条件单")
-        code = st.text_input("代码", key="condcode")
-        t = st.selectbox("类型", ["止盈", "止损"])
-        p = st.number_input("触发价", 0.01, step=0.01)
-        amt = st.number_input("股数", 100, step=100)
-        if st.button("✅ 添加", type="primary", use_container_width=True):
+        st.subheader("➕ 新增条件单")
+        code = st.text_input("股票代码", key="tab3_cond_code")
+        t = st.selectbox("条件单类型", ["止盈", "止损"], key="tab3_cond_type")
+        p = st.number_input("触发价格", min_value=0.01, step=0.01, key="tab3_cond_price")
+        amt = st.number_input("委托股数", min_value=100, step=100, key="tab3_cond_amt")
+        if st.button("✅ 添加条件单", type="primary", use_container_width=True, key="tab3_cond_btn"):
             r = sim.add_condition_order(code, t, p, amt)
             st.info(r)
     with c2:
-        st.subheader("条件单列表")
+        st.subheader("📋 当前条件单")
         if sim.condition_orders:
-            st.dataframe(pd.DataFrame(sim.condition_orders), hide_index=True)
+            st.dataframe(pd.DataFrame(sim.condition_orders), hide_index=True, key="tab3_cond_df")
         else:
-            st.info("无")
+            st.info("📭 暂无条件单")
 
-# 持仓 & 历史
+# ====================== 4. 持仓/历史 tab（唯一key）======================
 with tab4:
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("当前持仓")
+        st.subheader("📦 当前持仓")
         if sim.holdings:
             data = []
             for code, item in sim.holdings.items():
@@ -167,22 +178,22 @@ with tab4:
                 p = p if p else item["cost"]
                 prof = (p - item["cost"]) * item["amount"]
                 data.append({
-                    "代码": code,
-                    "名称": item["name"],
-                    "股数": item["amount"],
-                    "成本": f"{item['cost']:.2f}",
-                    "现价": f"{p:.2f}",
-                    "盈亏": f"{prof:.0f}"
+                    "股票代码": code,
+                    "股票名称": item["name"],
+                    "持仓股数": item["amount"],
+                    "成本价": f"{item['cost']:.2f}",
+                    "当前价": f"{p:.2f}",
+                    "持仓盈亏": f"{prof:.0f}"
                 })
-            st.dataframe(pd.DataFrame(data), hide_index=True)
+            st.dataframe(pd.DataFrame(data), hide_index=True, key="tab4_hold_df")
         else:
-            st.info("空仓")
+            st.info("📭 当前空仓")
     with c2:
-        st.subheader("交易记录")
+        st.subheader("📜 交易历史")
         if sim.trade_history:
-            st.dataframe(pd.DataFrame(sim.trade_history[-50:][::-1]), hide_index=True)
+            st.dataframe(pd.DataFrame(sim.trade_history[-50:][::-1]), hide_index=True, key="tab4_history_df")
         else:
-            st.info("无记录")
+            st.info("📭 暂无交易记录")
 
 st.divider()
-st.caption("📈 多账户 | 北京时间 | 休市预委托 | T+1 模拟交易")
+st.caption("📈 多账户 | 北京时间 | 休市预委托 | T+1 真实手续费 模拟交易系统")
