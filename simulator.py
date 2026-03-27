@@ -64,6 +64,10 @@ class StockTradingSimulator:
         try:
             # 使用akshare获取实时数据
             df = ak.stock_zh_a_spot_em()
+            if df.empty:
+                logger.error("获取行情数据失败，返回空DataFrame")
+                return 0.0
+                
             stock_data = df[df["代码"] == code]
             if not stock_data.empty:
                 price = float(stock_data.iloc[0]["最新价"])
@@ -98,6 +102,11 @@ class StockTradingSimulator:
     def buy(self, code: str, amount: int, price: Optional[float] = None) -> Dict[str, Any]:
         """买入股票"""
         result = {"success": False, "message": "", "order_id": None}
+        
+        # 检查数量是否为100的整数倍
+        if amount % 100 != 0:
+            result["message"] = "买入数量必须是100股的整数倍"
+            return result
         
         # 获取价格
         if price is None:
@@ -166,10 +175,20 @@ class StockTradingSimulator:
         """卖出股票"""
         result = {"success": False, "message": "", "order_id": None}
         
+        # 检查数量是否为100的整数倍
+        if amount % 100 != 0:
+            result["message"] = "卖出数量必须是100股的整数倍"
+            return result
+        
         # 获取持仓
         pos = self.positions.get(code)
-        if pos is None or pos["available"] < amount:
-            result["message"] = f"持仓不足，可用{pos['available'] if pos else 0}股，尝试卖出{amount}股"
+        if pos is None or pos["amount"] < amount:
+            result["message"] = f"持仓不足，持有{pos['amount'] if pos else 0}股，尝试卖出{amount}股"
+            return result
+        
+        # 检查可用数量（T+1规则）
+        if pos["available"] < amount:
+            result["message"] = f"可用数量不足，可用{pos['available']}股，尝试卖出{amount}股（T+1限制）"
             return result
         
         # 获取价格
@@ -240,7 +259,7 @@ class StockTradingSimulator:
                 result = self.buy(
                     code=order["code"],
                     amount=order["amount"],
-                    price=order.get("price")  # 使用委托价格，如果未指定则用None表示市价
+                    price=order.get("price")
                 )
             else:  # sell
                 result = self.sell(
@@ -262,7 +281,11 @@ class StockTradingSimulator:
             # 获取今天买入的数量（从交易历史中计算）
             today_buys = 0
             for trade in self.trade_history:
-                trade_date = trade["timestamp"].date() if isinstance(trade["timestamp"], datetime) else trade["timestamp"].date()
+                if isinstance(trade["timestamp"], datetime):
+                    trade_date = trade["timestamp"].date()
+                else:
+                    trade_date = trade["timestamp"].date()
+                    
                 if (trade["type"] == "buy" and trade["code"] == code and trade_date == today):
                     today_buys += trade["amount"]
             
@@ -274,6 +297,25 @@ class StockTradingSimulator:
         """添加条件单
         condition: 'gte' (大于等于触发价) 或 'lte' (小于等于触发价)
         """
+        result = {"success": False, "message": "", "order_id": None}
+        
+        # 检查数量是否为100的整数倍
+        if amount % 100 != 0:
+            result["message"] = "委托数量必须是100股的整数倍"
+            return result
+        
+        # 检查触发价格是否有效
+        if trigger_price <= 0:
+            result["message"] = "触发价格必须大于0"
+            return result
+        
+        # 对于卖出条件单，检查持仓
+        if order_type == "sell":
+            pos = self.positions.get(code)
+            if pos is None or pos["available"] < amount:
+                result["message"] = f"持仓不足，无法设置卖出条件单。可用: {pos['available'] if pos else 0}股"
+                return result
+        
         order = {
             "code": code,
             "type": order_type,  # 'buy' 或 'sell'
@@ -285,11 +327,10 @@ class StockTradingSimulator:
         }
         self.conditional_orders.append(order)
         
-        return {
-            "success": True,
-            "message": f"已添加条件单：{code} {order_type} {amount}股，触发价{trigger_price:.2f}",
-            "order_id": len(self.conditional_orders) - 1
-        }
+        result["success"] = True
+        result["message"] = f"已添加条件单：{code} {order_type} {amount}股，触发价{trigger_price:.2f}"
+        result["order_id"] = len(self.conditional_orders) - 1
+        return result
     
     def check_conditional_orders(self) -> List[Dict]:
         """检查并触发条件单"""
@@ -302,7 +343,10 @@ class StockTradingSimulator:
                 continue
                 
             current_price = self.get_price(order["code"], use_cache=False)
-            
+            if current_price <= 0:
+                remaining.append(order)  # 价格获取失败，跳过
+                continue
+                
             # 检查触发条件
             trigger = False
             if order["condition"] == "gte" and current_price >= order["trigger_price"]:
@@ -317,9 +361,13 @@ class StockTradingSimulator:
                 else:  # sell
                     result = self.sell(order["code"], order["amount"])
                 
-                result["conditional_order"] = order
-                triggered.append(result)
-                order["status"] = "triggered"
+                if result["success"]:
+                    result["conditional_order"] = order
+                    triggered.append(result)
+                    order["status"] = "triggered"
+                else:
+                    # 执行失败，保持激活状态
+                    remaining.append(order)
             else:
                 remaining.append(order)
         
@@ -337,3 +385,25 @@ class StockTradingSimulator:
     def get_conditional_orders(self) -> List[Dict]:
         """获取条件单列表"""
         return self.conditional_orders
+    
+    def get_position_summary(self) -> List[Dict]:
+        """获取持仓汇总信息"""
+        summary = []
+        for code, pos in self.positions.items():
+            current_price = self.get_price(code, use_cache=False)
+            market_value = current_price * pos["amount"]
+            profit_loss = (current_price - pos["cost"]) * pos["amount"]
+            profit_loss_pct = (profit_loss / (pos["cost"] * pos["amount"])) * 100 if pos["cost"] * pos["amount"] > 0 else 0
+            
+            summary.append({
+                "股票代码": code,
+                "持仓数量": pos["amount"],
+                "可用数量": pos["available"],
+                "成本价": pos["cost"],
+                "当前价": current_price,
+                "市值": market_value,
+                "盈亏": profit_loss,
+                "盈亏百分比": profit_loss_pct
+            })
+        
+        return summary
